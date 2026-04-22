@@ -1,0 +1,919 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Doodle Dash — Test Runner</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bagel+Fat+One&family=Lilita+One&family=DM+Sans:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+
+<script src="game-core.js"></script>
+
+<style>
+  :root {
+    --paper: #faf4e6;
+    --ink: #111111;
+    --pass: #2f9e44;
+    --fail: #e03131;
+    --pink: #ff4d8d;
+    --blue: #3a86ff;
+    --yellow: #ffd23f;
+    --lime: #8ce99a;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--paper);
+    color: var(--ink);
+    padding: 30px 20px 60px;
+    min-height: 100vh;
+  }
+  .container { max-width: 900px; margin: 0 auto; }
+  header { margin-bottom: 24px; }
+  h1 {
+    font-family: 'Bagel Fat One';
+    font-weight: 400;
+    font-size: clamp(40px, 6vw, 64px);
+    line-height: 1;
+    letter-spacing: -1px;
+  }
+  h1 .a { color: var(--pink); text-shadow: 3px 3px 0 var(--ink); }
+  h1 .b { color: var(--blue); text-shadow: 3px 3px 0 var(--ink); margin-left: 6px; }
+  header p { margin-top: 8px; color: #555; font-weight: 500; }
+
+  .summary {
+    display: flex;
+    gap: 14px;
+    align-items: center;
+    padding: 16px 20px;
+    background: white;
+    border: 3px solid var(--ink);
+    box-shadow: 6px 6px 0 var(--ink);
+    margin: 20px 0 30px;
+    flex-wrap: wrap;
+  }
+  .summary .stat { font-family: 'Lilita One'; font-size: 16px; text-transform: uppercase; letter-spacing: 1px; }
+  .summary .stat.big { font-size: 28px; }
+  .summary .stat.pass { color: var(--pass); }
+  .summary .stat.fail { color: var(--fail); }
+  .summary .bar { flex: 1; height: 12px; background: #eee; border: 2px solid var(--ink); position: relative; overflow: hidden; min-width: 100px; }
+  .summary .bar .fill { height: 100%; background: var(--lime); transition: width 0.5s; }
+  .summary .bar .fill.has-fails { background: linear-gradient(90deg, var(--lime) 0%, var(--lime) var(--pass-pct, 100%), var(--fail) var(--pass-pct, 100%), var(--fail) 100%); }
+  button.run {
+    font-family: 'Lilita One'; font-size: 15px;
+    background: var(--yellow); color: var(--ink);
+    border: 3px solid var(--ink);
+    padding: 8px 18px;
+    cursor: pointer;
+    box-shadow: 4px 4px 0 var(--ink);
+    letter-spacing: 1px; text-transform: uppercase;
+  }
+  button.run:hover { transform: translate(-2px, -2px); box-shadow: 6px 6px 0 var(--ink); }
+  button.run:active { transform: translate(4px, 4px); box-shadow: 0 0 0 var(--ink); }
+
+  .group {
+    background: white;
+    border: 3px solid var(--ink);
+    box-shadow: 6px 6px 0 var(--ink);
+    margin-bottom: 20px;
+    overflow: hidden;
+  }
+  .group-header {
+    padding: 10px 18px;
+    background: var(--ink);
+    color: var(--paper);
+    font-family: 'Lilita One';
+    font-size: 15px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .group-header .count { font-size: 12px; opacity: 0.8; }
+  .test {
+    padding: 10px 18px;
+    border-bottom: 2px solid #f0e8d0;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .test:last-child { border-bottom: none; }
+  .test .badge {
+    font-family: 'Lilita One';
+    font-size: 12px;
+    padding: 3px 8px;
+    border: 2px solid var(--ink);
+    letter-spacing: 1px;
+    flex-shrink: 0;
+  }
+  .test.pass .badge { background: var(--lime); color: var(--ink); }
+  .test.fail .badge { background: var(--fail); color: white; }
+  .test .body { flex: 1; min-width: 0; }
+  .test .name { font-weight: 700; font-size: 14px; }
+  .test .err {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--fail);
+    background: #ffecec;
+    padding: 8px 10px;
+    margin-top: 6px;
+    border-left: 3px solid var(--fail);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .legend {
+    font-size: 13px; color: #666; margin-top: 16px;
+    padding: 12px 16px; background: white; border: 2px dashed #bbb;
+  }
+  .legend b { color: var(--ink); }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1><span class="a">Doodle</span><span class="b">Dash</span></h1>
+    <p>Automated test runner — verifies pure game logic and host state machine.</p>
+  </header>
+
+  <div class="summary" id="summary">
+    <div class="stat big pass"><span id="passCount">0</span> passed</div>
+    <div class="stat big fail"><span id="failCount">0</span> failed</div>
+    <div class="stat">of <span id="totalCount">0</span></div>
+    <div class="bar"><div class="fill" id="fillBar" style="width: 0%"></div></div>
+    <button class="run" onclick="location.reload()">Re-run</button>
+  </div>
+
+  <div id="results"></div>
+
+  <div class="legend">
+    <b>What this tests:</b> pure functions (word masking, guess matching, Levenshtein distance, scoring formula, etc.) and the host state machine in <code>game-core.js</code> (start game, accept mid-game join, award points, tick timer, etc.).
+    <br><br>
+    <b>What this doesn't test:</b> actual WebRTC peer connections, canvas rendering, UI interactions. Those require end-to-end browser testing — see <code>TESTING.md</code> for manual scenarios.
+  </div>
+</div>
+
+<script>
+/* =============================================================
+   Minimal test framework
+   ============================================================= */
+const groups = [];
+let current = null;
+
+function group(name, fn) {
+  current = { name, tests: [] };
+  groups.push(current);
+  fn();
+  current = null;
+}
+function test(name, fn) {
+  current.tests.push({ name, fn });
+}
+function assert(cond, msg) {
+  if (!cond) throw new Error(msg || 'assertion failed');
+}
+function assertEq(actual, expected, msg) {
+  if (actual !== expected) {
+    throw new Error((msg || 'not equal') + `\n  actual:   ${JSON.stringify(actual)}\n  expected: ${JSON.stringify(expected)}`);
+  }
+}
+function assertDeepEq(actual, expected, msg) {
+  const a = JSON.stringify(actual), b = JSON.stringify(expected);
+  if (a !== b) {
+    throw new Error((msg || 'not deep equal') + `\n  actual:   ${a}\n  expected: ${b}`);
+  }
+}
+function assertThrows(fn, msg) {
+  let threw = false;
+  try { fn(); } catch (e) { threw = true; }
+  if (!threw) throw new Error(msg || 'expected to throw but did not');
+}
+
+/* Deterministic RNG for repeatable tests */
+function seededRng(seed) {
+  let s = seed >>> 0;
+  return function() {
+    s = (s * 1664525 + 1013904223) >>> 0;
+    return s / 4294967296;
+  };
+}
+
+/* =============================================================
+   Pull everything from GameCore
+   ============================================================= */
+const GC = window.GameCore;
+const HL = GC.HostLogic;
+
+/* =============================================================
+   PURE UTILITY TESTS
+   ============================================================= */
+group('Pure: maskWord', () => {
+  test('hides all letters as underscores', () => {
+    assertEq(GC.maskWord('cat'), '___');
+    assertEq(GC.maskWord('elephant'), '________');
+  });
+  test('preserves spaces', () => {
+    assertEq(GC.maskWord('hot dog'), '___ ___');
+  });
+  test('preserves hyphens and apostrophes', () => {
+    assertEq(GC.maskWord('ice-cream'), '___-_____');
+    assertEq(GC.maskWord("don't"), "___'_");
+  });
+  test('empty string returns empty', () => {
+    assertEq(GC.maskWord(''), '');
+  });
+});
+
+group('Pure: normalizeGuess', () => {
+  test('lowercases text', () => {
+    assertEq(GC.normalizeGuess('CAT'), 'cat');
+  });
+  test('trims whitespace', () => {
+    assertEq(GC.normalizeGuess('  cat  '), 'cat');
+  });
+  test('collapses internal whitespace', () => {
+    assertEq(GC.normalizeGuess('hot    dog'), 'hot dog');
+  });
+  test('handles null/undefined', () => {
+    assertEq(GC.normalizeGuess(null), '');
+    assertEq(GC.normalizeGuess(undefined), '');
+  });
+});
+
+group('Pure: levenshtein', () => {
+  test('identical strings have distance 0', () => {
+    assertEq(GC.levenshtein('hello', 'hello'), 0);
+  });
+  test('single substitution = 1', () => {
+    assertEq(GC.levenshtein('cat', 'bat'), 1);
+  });
+  test('single insertion = 1', () => {
+    assertEq(GC.levenshtein('cat', 'cats'), 1);
+  });
+  test('single deletion = 1', () => {
+    assertEq(GC.levenshtein('cats', 'cat'), 1);
+  });
+  test('empty vs non-empty = length', () => {
+    assertEq(GC.levenshtein('', 'abc'), 3);
+    assertEq(GC.levenshtein('abc', ''), 3);
+  });
+  test('both empty = 0', () => {
+    assertEq(GC.levenshtein('', ''), 0);
+  });
+  test('completely different', () => {
+    assertEq(GC.levenshtein('cat', 'dog'), 3);
+  });
+});
+
+group('Pure: isCorrectGuess', () => {
+  test('exact match', () => { assert(GC.isCorrectGuess('cat', 'cat')); });
+  test('case insensitive', () => { assert(GC.isCorrectGuess('Cat', 'CAT')); });
+  test('trims whitespace', () => { assert(GC.isCorrectGuess('  cat  ', 'cat')); });
+  test('close but not correct', () => { assert(!GC.isCorrectGuess('cats', 'cat')); });
+  test('empty target not counted', () => { assert(!GC.isCorrectGuess('', '')); });
+});
+
+group('Pure: isCloseGuess', () => {
+  test('one-char off is close', () => { assert(GC.isCloseGuess('cats', 'cat')); });
+  test('one-char substitution is close', () => { assert(GC.isCloseGuess('bat', 'cat')); });
+  test('exact match is not "close" (it\'s correct)', () => { assert(!GC.isCloseGuess('cat', 'cat')); });
+  test('too-short guess is not close', () => { assert(!GC.isCloseGuess('ca', 'cat')); });
+  test('very different guess is not close', () => { assert(!GC.isCloseGuess('dog', 'cat')); });
+  test('large length diff is not close', () => { assert(!GC.isCloseGuess('elephant', 'cat')); });
+});
+
+group('Pure: computeGuesserPoints', () => {
+  test('first guesser at full time = 200', () => {
+    assertEq(GC.computeGuesserPoints(1, 80, 80), 200);
+  });
+  test('first guesser at zero time = 100', () => {
+    assertEq(GC.computeGuesserPoints(1, 0, 80), 100);
+  });
+  test('second guesser at full time gets less than first', () => {
+    const first = GC.computeGuesserPoints(1, 80, 80);
+    const second = GC.computeGuesserPoints(2, 80, 80);
+    assert(second < first);
+  });
+  test('order bonus decays but floors at 0', () => {
+    const sixth = GC.computeGuesserPoints(6, 80, 80);
+    const twentieth = GC.computeGuesserPoints(20, 80, 80);
+    assertEq(sixth, twentieth, 'order bonus should floor once beyond threshold');
+  });
+  test('later time gives fewer base points', () => {
+    const early = GC.computeGuesserPoints(1, 60, 80);
+    const late = GC.computeGuesserPoints(1, 10, 80);
+    assert(early > late);
+  });
+});
+
+group('Pure: misc helpers', () => {
+  test('computeDrawerBonus is constant 30', () => {
+    assertEq(GC.computeDrawerBonus(), 30);
+  });
+  test('initials from single name', () => {
+    assertEq(GC.initials('alice'), 'A');
+  });
+  test('initials from two names', () => {
+    assertEq(GC.initials('John Doe'), 'JD');
+  });
+  test('initials handles null/empty', () => {
+    assertEq(GC.initials(''), '?');
+    assertEq(GC.initials(null), '?');
+  });
+  test('contrastText picks black for light colors', () => {
+    assertEq(GC.contrastText('#ffffff'), '#000');
+    assertEq(GC.contrastText('#ffd23f'), '#000');
+  });
+  test('contrastText picks white for dark colors', () => {
+    assertEq(GC.contrastText('#111111'), '#fff');
+    assertEq(GC.contrastText('#3a86ff'), '#fff');
+  });
+  test('randomCode is 6 chars, valid charset', () => {
+    for (let i = 0; i < 20; i++) {
+      const c = GC.randomCode();
+      assertEq(c.length, 6);
+      assert(/^[A-HJ-NP-Z2-9]{6}$/.test(c), 'charset: ' + c);
+    }
+  });
+  test('shuffle preserves elements', () => {
+    const original = [1, 2, 3, 4, 5];
+    const shuffled = GC.shuffle(original, seededRng(42));
+    assertEq(shuffled.length, 5);
+    assertDeepEq([...shuffled].sort(), [...original].sort());
+  });
+  test('shuffle does not mutate input', () => {
+    const original = [1, 2, 3, 4, 5];
+    const snapshot = [...original];
+    GC.shuffle(original);
+    assertDeepEq(original, snapshot);
+  });
+  test('escapeHtml neutralizes tags', () => {
+    assertEq(GC.escapeHtml('<script>'), '&lt;script&gt;');
+    assertEq(GC.escapeHtml('a & b'), 'a &amp; b');
+    assertEq(GC.escapeHtml('"quoted"'), '&quot;quoted&quot;');
+  });
+});
+
+group('Pure: word bank', () => {
+  test('has a reasonable number of words', () => {
+    assert(GC.WORD_SET.length >= 150, 'word count: ' + GC.WORD_SET.length);
+  });
+  test('all words are non-empty strings', () => {
+    for (const w of GC.WORD_SET) {
+      assert(typeof w === 'string' && w.length > 0, 'bad word: ' + w);
+    }
+  });
+  test('no duplicates in WORD_SET', () => {
+    assertEq(GC.WORD_SET.length, new Set(GC.WORD_SET).size);
+  });
+});
+
+/* =============================================================
+   HOST STATE MACHINE TESTS
+   ============================================================= */
+group('HostLogic: createInitialState', () => {
+  test('starts in lobby with host as first player', () => {
+    const s = HL.createInitialState('h1', 'Alice', '#ff0000');
+    assertEq(s.phase, 'lobby');
+    assertEq(s.players.length, 1);
+    assertEq(s.players[0].id, 'h1');
+    assertEq(s.players[0].name, 'Alice');
+    assertEq(s.players[0].score, 0);
+    assert(s.players[0].connected);
+    assertEq(s.hostId, 'h1');
+  });
+  test('truncates long names', () => {
+    const s = HL.createInitialState('h1', 'A'.repeat(50), '#000');
+    assert(s.players[0].name.length <= 16);
+  });
+});
+
+group('HostLogic: addPlayer', () => {
+  test('adds a new player in lobby', () => {
+    const s = HL.createInitialState('h1', 'Alice', '#ff0000');
+    const r = HL.addPlayer(s, 'p2', 'Bob', '#00ff00');
+    assert(r.accepted);
+    assertEq(r.reconnect, false);
+    assertEq(s.players.length, 2);
+    assertEq(s.players[1].name, 'Bob');
+  });
+  test('rejects when room is full', () => {
+    const s = HL.createInitialState('h1', 'Host', '#000');
+    for (let i = 0; i < 11; i++) HL.addPlayer(s, 'p' + i, 'P' + i);
+    assertEq(s.players.length, 12); // host + 11
+    const r = HL.addPlayer(s, 'p12', 'Overflow');
+    assert(!r.accepted);
+    assert(r.reason.toLowerCase().includes('full'));
+  });
+  test('reconnect path: same id rejoins', () => {
+    const s = HL.createInitialState('h1', 'Alice', '#000');
+    HL.addPlayer(s, 'p2', 'Bob');
+    HL.disconnectPlayer(s, 'p2');
+    // In lobby, disconnect removes; so Bob is gone. But let's simulate reconnect during game:
+    s.phase = 'drawing'; // force phase
+    HL.disconnectPlayer(s, 'p2'); // no-op (already removed)
+    HL.addPlayer(s, 'p2', 'Bob');
+    const bob = s.players.find(p => p.id === 'p2');
+    assert(bob);
+    assert(bob.connected);
+  });
+  test('truncates long names', () => {
+    const s = HL.createInitialState('h1', 'Host', '#000');
+    const r = HL.addPlayer(s, 'p2', 'X'.repeat(50));
+    assert(r.accepted);
+    assert(r.player.name.length <= 16);
+  });
+});
+
+group('HostLogic: canStartGame', () => {
+  test('false with only one player', () => {
+    const s = HL.createInitialState('h1', 'Host');
+    assert(!HL.canStartGame(s));
+  });
+  test('true with two+ connected players', () => {
+    const s = HL.createInitialState('h1', 'Host');
+    HL.addPlayer(s, 'p2', 'Bob');
+    assert(HL.canStartGame(s));
+  });
+  test('false outside of lobby phase', () => {
+    const s = HL.createInitialState('h1', 'Host');
+    HL.addPlayer(s, 'p2', 'Bob');
+    HL.startGame(s, 3, 60, seededRng(1));
+    assert(!HL.canStartGame(s));
+  });
+});
+
+/* === THE TWO SCENARIOS YOU EXPLICITLY ASKED FOR === */
+
+group('🎯 Scenario: Host can start the game', () => {
+  test('host starts game → phase transitions to choosing', () => {
+    const s = HL.createInitialState('host', 'Alice', '#ff0000');
+    HL.addPlayer(s, 'p2', 'Bob', '#00ff00');
+    HL.addPlayer(s, 'p3', 'Charlie', '#0000ff');
+    assertEq(s.phase, 'lobby');
+    assert(HL.canStartGame(s));
+
+    const r = HL.startGame(s, 3, 80, seededRng(42));
+    assert(r.started, 'startGame should succeed');
+    assertEq(s.phase, 'choosing', 'should transition to choosing phase');
+    assertEq(s.round, 1);
+    assertEq(s.maxRounds, 3);
+    assertEq(s.maxTime, 80);
+  });
+
+  test('all players reset to 0 score', () => {
+    const s = HL.createInitialState('host', 'Alice');
+    HL.addPlayer(s, 'p2', 'Bob');
+    // pretend they have prior scores
+    s.players[0].score = 100;
+    s.players[1].score = 200;
+    HL.startGame(s, 3, 60, seededRng(1));
+    for (const p of s.players) assertEq(p.score, 0, `${p.name} should start at 0`);
+  });
+
+  test('a drawer is selected from connected players', () => {
+    const s = HL.createInitialState('host', 'Alice');
+    HL.addPlayer(s, 'p2', 'Bob');
+    HL.startGame(s, 3, 60, seededRng(1));
+    assert(s.drawerId, 'drawerId must be set');
+    assert(['host', 'p2'].includes(s.drawerId), 'drawerId must be one of the players');
+  });
+
+  test('three word choices are offered', () => {
+    const s = HL.createInitialState('host', 'Alice');
+    HL.addPlayer(s, 'p2', 'Bob');
+    HL.startGame(s, 3, 60, seededRng(1));
+    assert(Array.isArray(s.wordChoices));
+    assertEq(s.wordChoices.length, 3);
+    assert(s.wordChoices.every(w => GC.WORD_SET.includes(w)));
+  });
+
+  test('draw order contains all connected players', () => {
+    const s = HL.createInitialState('host', 'Alice');
+    HL.addPlayer(s, 'p2', 'Bob');
+    HL.addPlayer(s, 'p3', 'Charlie');
+    HL.startGame(s, 3, 60, seededRng(1));
+    assertEq(s.drawOrder.length, 3);
+    assertDeepEq([...s.drawOrder].sort(), ['host', 'p2', 'p3'].sort());
+  });
+
+  test('refuses to start with fewer than 2 players', () => {
+    const s = HL.createInitialState('host', 'Alice');
+    const r = HL.startGame(s, 3, 60, seededRng(1));
+    assert(!r.started);
+    assertEq(s.phase, 'lobby');
+  });
+
+  test('chooseWord advances from choosing → drawing', () => {
+    const s = HL.createInitialState('host', 'Alice');
+    HL.addPlayer(s, 'p2', 'Bob');
+    HL.startGame(s, 3, 60, seededRng(1));
+    const picked = s.wordChoices[0];
+    const r = HL.chooseWord(s, picked);
+    assert(r.accepted);
+    assertEq(s.phase, 'drawing');
+    assertEq(s.currentWord, picked);
+    assertEq(s.maskedWord, GC.maskWord(picked));
+    assertEq(s.wordLength, picked.length);
+  });
+
+  test('chooseWord rejects invalid words', () => {
+    const s = HL.createInitialState('host', 'Alice');
+    HL.addPlayer(s, 'p2', 'Bob');
+    HL.startGame(s, 3, 60, seededRng(1));
+    const r = HL.chooseWord(s, 'not-a-real-choice');
+    assert(!r.accepted);
+    assertEq(s.phase, 'choosing');
+  });
+});
+
+group('🎯 Scenario: User can join after the game has started', () => {
+  test('late joiner is accepted during drawing phase', () => {
+    const s = HL.createInitialState('host', 'Alice');
+    HL.addPlayer(s, 'p2', 'Bob');
+    HL.startGame(s, 3, 60, seededRng(1));
+    HL.chooseWord(s, s.wordChoices[0]);
+    assertEq(s.phase, 'drawing');
+
+    const r = HL.addPlayer(s, 'p3', 'Charlie', '#ff00ff');
+    assert(r.accepted, 'late join should be accepted');
+    assertEq(r.reconnect, false);
+    assertEq(r.midGame, true, 'should be flagged as midGame');
+    assertEq(s.players.length, 3);
+  });
+
+  test('late joiner starts with 0 points even though round is in progress', () => {
+    const s = HL.createInitialState('host', 'Alice');
+    HL.addPlayer(s, 'p2', 'Bob');
+    HL.startGame(s, 3, 60, seededRng(1));
+    HL.chooseWord(s, s.wordChoices[0]);
+    // Earn points for existing players
+    HL.processGuess(s, 'p2', s.currentWord);
+    const hostScoreBeforeJoin = s.players.find(p => p.id === 'host').score;
+    assert(hostScoreBeforeJoin > 0, 'drawer should have some points already');
+
+    HL.addPlayer(s, 'p3', 'Charlie');
+    const charlie = s.players.find(p => p.id === 'p3');
+    assertEq(charlie.score, 0, 'late joiner starts at 0');
+  });
+
+  test('late joiner does not disrupt current drawer or round', () => {
+    const s = HL.createInitialState('host', 'Alice');
+    HL.addPlayer(s, 'p2', 'Bob');
+    HL.startGame(s, 3, 60, seededRng(1));
+    HL.chooseWord(s, s.wordChoices[0]);
+    const drawerBefore = s.drawerId;
+    const wordBefore = s.currentWord;
+    const roundBefore = s.round;
+    const timeBefore = s.timeLeft;
+
+    HL.addPlayer(s, 'p3', 'Charlie');
+    assertEq(s.drawerId, drawerBefore, 'drawer unchanged');
+    assertEq(s.currentWord, wordBefore, 'current word unchanged');
+    assertEq(s.round, roundBefore, 'round unchanged');
+    assertEq(s.timeLeft, timeBefore, 'timer unchanged');
+    assertEq(s.phase, 'drawing', 'phase unchanged');
+  });
+
+  test('late joiner can guess the current word and earn points', () => {
+    const s = HL.createInitialState('host', 'Alice');
+    HL.addPlayer(s, 'p2', 'Bob');
+    HL.startGame(s, 3, 60, seededRng(1));
+    HL.chooseWord(s, s.wordChoices[0]);
+
+    HL.addPlayer(s, 'p3', 'Charlie');
+    const r = HL.processGuess(s, 'p3', s.currentWord);
+    assert(r.handled);
+    assertEq(r.kind, 'correct');
+    assert(r.pointsAwarded > 0);
+    const charlie = s.players.find(p => p.id === 'p3');
+    assert(charlie.score > 0);
+  });
+
+  test('late joiner is included in the NEXT round\'s draw order', () => {
+    const s = HL.createInitialState('host', 'Alice');
+    HL.addPlayer(s, 'p2', 'Bob');
+    HL.startGame(s, 3, 80, seededRng(1));
+    HL.chooseWord(s, s.wordChoices[0]);
+
+    HL.addPlayer(s, 'p3', 'Charlie');
+    // Current round's drawOrder does NOT include Charlie (round already in progress)
+    assert(!s.drawOrder.includes('p3'), "late joiner not in current round's draw order");
+
+    // Fast-forward: end current turn, advance until new round
+    // (Alice, then Bob, then new round)
+    HL.endTurn(s);
+    HL.advanceToNextTurn(s, seededRng(2)); // Bob's turn
+    if (s.phase === 'choosing') {
+      HL.chooseWord(s, s.wordChoices[0]);
+      HL.endTurn(s);
+      HL.advanceToNextTurn(s, seededRng(3)); // should wrap around to new round
+    }
+
+    // Round 2 — drawOrder should include Charlie
+    assertEq(s.round, 2, 'should be on round 2 now');
+    assert(s.drawOrder.includes('p3'), "Charlie should be in round 2's draw order");
+    assertEq(s.drawOrder.length, 3);
+  });
+
+  test('late joiner receives proper public state snapshot', () => {
+    const s = HL.createInitialState('host', 'Alice');
+    HL.addPlayer(s, 'p2', 'Bob');
+    HL.startGame(s, 3, 60, seededRng(1));
+    HL.chooseWord(s, s.wordChoices[0]);
+    HL.addPlayer(s, 'p3', 'Charlie');
+
+    const pub = HL.getPublicState(s);
+    assertEq(pub.phase, 'drawing');
+    assert(pub.players.find(p => p.id === 'p3'), 'Charlie is visible in public state');
+    assert(!('currentWord' in pub), 'currentWord must NOT leak in public state');
+    assertEq(pub.maskedWord, s.maskedWord, 'masked word is exposed');
+    assertEq(pub.maskedWord.indexOf(s.currentWord[0]) !== -1 && pub.maskedWord === s.currentWord, false, 'full word not exposed');
+  });
+
+  test('canvas events are recorded and retrievable for late-joiner replay', () => {
+    const s = HL.createInitialState('host', 'Alice');
+    HL.addPlayer(s, 'p2', 'Bob');
+    HL.startGame(s, 3, 60, seededRng(1));
+    HL.chooseWord(s, s.wordChoices[0]);
+
+    // Drawer draws a stroke and fills bg
+    HL.recordCanvasEvent(s, { type: 'stroke', x1: 0.1, y1: 0.1, x2: 0.3, y2: 0.3, color: '#ff0000', size: 6 });
+    HL.recordCanvasEvent(s, { type: 'stroke', x1: 0.3, y1: 0.3, x2: 0.5, y2: 0.5, color: '#ff0000', size: 6 });
+
+    // Charlie joins late
+    HL.addPlayer(s, 'p3', 'Charlie');
+    // Host would send state.canvasEvents to Charlie
+    assert(Array.isArray(s.canvasEvents));
+    assertEq(s.canvasEvents.length, 2);
+    assertEq(s.canvasEvents[0].type, 'stroke');
+  });
+
+  test('clear event resets the recorded canvas log', () => {
+    const s = HL.createInitialState('host', 'Alice');
+    HL.addPlayer(s, 'p2', 'Bob');
+    HL.startGame(s, 3, 60, seededRng(1));
+    HL.chooseWord(s, s.wordChoices[0]);
+    HL.recordCanvasEvent(s, { type: 'stroke', x1: 0, y1: 0, x2: 1, y2: 1, color: '#000', size: 6 });
+    HL.recordCanvasEvent(s, { type: 'stroke', x1: 0, y1: 0, x2: 1, y2: 1, color: '#000', size: 6 });
+    assertEq(s.canvasEvents.length, 2);
+    HL.recordCanvasEvent(s, { type: 'clear' });
+    assertEq(s.canvasEvents.length, 1);
+    assertEq(s.canvasEvents[0].type, 'clear');
+  });
+
+  test('canvas log clears automatically on next turn', () => {
+    const s = HL.createInitialState('host', 'Alice');
+    HL.addPlayer(s, 'p2', 'Bob');
+    HL.startGame(s, 3, 60, seededRng(1));
+    HL.chooseWord(s, s.wordChoices[0]);
+    HL.recordCanvasEvent(s, { type: 'stroke', x1: 0, y1: 0, x2: 1, y2: 1, color: '#000', size: 6 });
+    assertEq(s.canvasEvents.length, 1);
+
+    HL.endTurn(s);
+    HL.advanceToNextTurn(s, seededRng(1));
+    // New turn → canvasEvents should be reset
+    assertEq(s.canvasEvents.length, 0);
+  });
+});
+
+/* =============================================================
+   SUPPORTING HostLogic TESTS
+   ============================================================= */
+group('HostLogic: processGuess', () => {
+  function setupDrawing(seed = 1) {
+    const s = HL.createInitialState('host', 'Alice');
+    HL.addPlayer(s, 'p2', 'Bob');
+    HL.addPlayer(s, 'p3', 'Charlie');
+    HL.startGame(s, 3, 60, seededRng(seed));
+    HL.chooseWord(s, s.wordChoices[0]);
+    return s;
+  }
+  test('correct guess awards points', () => {
+    const s = setupDrawing();
+    const nonDrawer = s.players.find(p => p.id !== s.drawerId);
+    const r = HL.processGuess(s, nonDrawer.id, s.currentWord);
+    assertEq(r.kind, 'correct');
+    assert(nonDrawer.score > 0);
+  });
+  test('drawer earns bonus when someone guesses', () => {
+    const s = setupDrawing();
+    const drawer = s.players.find(p => p.id === s.drawerId);
+    const nonDrawer = s.players.find(p => p.id !== s.drawerId);
+    const before = drawer.score;
+    HL.processGuess(s, nonDrawer.id, s.currentWord);
+    assertEq(drawer.score, before + GC.computeDrawerBonus());
+  });
+  test('drawer cannot guess', () => {
+    const s = setupDrawing();
+    const r = HL.processGuess(s, s.drawerId, s.currentWord);
+    assert(!r.handled);
+    assertEq(r.reason, 'is-drawer');
+  });
+  test('cannot guess same word twice', () => {
+    const s = setupDrawing();
+    const nonDrawer = s.players.find(p => p.id !== s.drawerId);
+    HL.processGuess(s, nonDrawer.id, s.currentWord);
+    const r2 = HL.processGuess(s, nonDrawer.id, s.currentWord);
+    assert(!r2.handled);
+    assertEq(r2.reason, 'already-guessed');
+  });
+  test('close guess returns kind=close', () => {
+    const s = setupDrawing();
+    const nonDrawer = s.players.find(p => p.id !== s.drawerId);
+    const close = s.currentWord + 's'; // almost-right
+    const r = HL.processGuess(s, nonDrawer.id, close);
+    assertEq(r.kind, 'close');
+  });
+  test('wrong guess returns kind=chat', () => {
+    const s = setupDrawing();
+    const nonDrawer = s.players.find(p => p.id !== s.drawerId);
+    const r = HL.processGuess(s, nonDrawer.id, 'totally-wrong-guess-xyz');
+    assertEq(r.kind, 'chat');
+  });
+  test('earlier guesser earns more than later guesser', () => {
+    const s = setupDrawing();
+    const nonDrawers = s.players.filter(p => p.id !== s.drawerId);
+    const r1 = HL.processGuess(s, nonDrawers[0].id, s.currentWord);
+    const r2 = HL.processGuess(s, nonDrawers[1].id, s.currentWord);
+    assert(r1.pointsAwarded > r2.pointsAwarded, `first ${r1.pointsAwarded} should beat second ${r2.pointsAwarded}`);
+  });
+  test('allGuessed flips true when only non-drawers remain', () => {
+    const s = setupDrawing();
+    const nonDrawers = s.players.filter(p => p.id !== s.drawerId);
+    const r1 = HL.processGuess(s, nonDrawers[0].id, s.currentWord);
+    assert(!r1.allGuessed);
+    const r2 = HL.processGuess(s, nonDrawers[1].id, s.currentWord);
+    assert(r2.allGuessed);
+  });
+});
+
+group('HostLogic: tick', () => {
+  test('decrements timeLeft during drawing', () => {
+    const s = HL.createInitialState('host', 'A');
+    HL.addPlayer(s, 'p2', 'B');
+    HL.startGame(s, 3, 60, seededRng(1));
+    HL.chooseWord(s, s.wordChoices[0]);
+    const before = s.timeLeft;
+    HL.tick(s);
+    assertEq(s.timeLeft, before - 1);
+  });
+  test('timeUp flag flips at 0', () => {
+    const s = HL.createInitialState('host', 'A');
+    HL.addPlayer(s, 'p2', 'B');
+    HL.startGame(s, 3, 5, seededRng(1));
+    HL.chooseWord(s, s.wordChoices[0]);
+    let r;
+    for (let i = 0; i < 5; i++) r = HL.tick(s);
+    assert(r.timeUp);
+  });
+  test('does nothing outside of drawing phase', () => {
+    const s = HL.createInitialState('host', 'A');
+    const r = HL.tick(s);
+    assert(!r.timeUp);
+    assert(!r.revealed);
+  });
+});
+
+group('HostLogic: disconnectPlayer', () => {
+  test('removes player in lobby', () => {
+    const s = HL.createInitialState('host', 'A');
+    HL.addPlayer(s, 'p2', 'B');
+    HL.disconnectPlayer(s, 'p2');
+    assertEq(s.players.length, 1);
+  });
+  test('marks disconnected but keeps player in game', () => {
+    const s = HL.createInitialState('host', 'A');
+    HL.addPlayer(s, 'p2', 'B');
+    HL.startGame(s, 3, 60, seededRng(1));
+    HL.disconnectPlayer(s, 'p2');
+    const bob = s.players.find(p => p.id === 'p2');
+    assert(bob);
+    assert(!bob.connected);
+  });
+  test('flags wasDrawer=true when drawer leaves', () => {
+    const s = HL.createInitialState('host', 'A');
+    HL.addPlayer(s, 'p2', 'B');
+    HL.startGame(s, 3, 60, seededRng(1));
+    HL.chooseWord(s, s.wordChoices[0]);
+    const r = HL.disconnectPlayer(s, s.drawerId);
+    assert(r.wasDrawer);
+  });
+});
+
+group('HostLogic: getPublicState privacy', () => {
+  test('does not leak currentWord', () => {
+    const s = HL.createInitialState('host', 'A');
+    HL.addPlayer(s, 'p2', 'B');
+    HL.startGame(s, 3, 60, seededRng(1));
+    HL.chooseWord(s, s.wordChoices[0]);
+    const pub = HL.getPublicState(s);
+    assert(!('currentWord' in pub));
+    assertEq(pub.maskedWord, GC.maskWord(s.currentWord));
+  });
+  test('does not leak wordChoices', () => {
+    const s = HL.createInitialState('host', 'A');
+    HL.addPlayer(s, 'p2', 'B');
+    HL.startGame(s, 3, 60, seededRng(1));
+    const pub = HL.getPublicState(s);
+    assert(!('wordChoices' in pub));
+  });
+  test('does not leak canvasEvents', () => {
+    const s = HL.createInitialState('host', 'A');
+    HL.addPlayer(s, 'p2', 'B');
+    HL.startGame(s, 3, 60, seededRng(1));
+    HL.chooseWord(s, s.wordChoices[0]);
+    HL.recordCanvasEvent(s, { type: 'stroke', x1: 0, y1: 0, x2: 1, y2: 1, color: '#000', size: 6 });
+    const pub = HL.getPublicState(s);
+    assert(!('canvasEvents' in pub));
+  });
+});
+
+group('HostLogic: full round lifecycle', () => {
+  test('game ends after maxRounds', () => {
+    const s = HL.createInitialState('host', 'A');
+    HL.addPlayer(s, 'p2', 'B');
+    HL.startGame(s, 2, 40, seededRng(1)); // 2 rounds, 2 players = 4 turns total
+    let safety = 0;
+    while (s.phase !== 'gameEnd' && safety++ < 20) {
+      if (s.phase === 'choosing') HL.chooseWord(s, s.wordChoices[0]);
+      HL.endTurn(s);
+      HL.advanceToNextTurn(s, seededRng(safety));
+    }
+    assertEq(s.phase, 'gameEnd', 'game should reach gameEnd within 2 rounds');
+  });
+
+  test('resetForNewGame returns to lobby with zeroed scores', () => {
+    const s = HL.createInitialState('host', 'A');
+    HL.addPlayer(s, 'p2', 'B');
+    HL.startGame(s, 2, 40, seededRng(1));
+    s.players[0].score = 500;
+    s.players[1].score = 300;
+    HL.resetForNewGame(s);
+    assertEq(s.phase, 'lobby');
+    for (const p of s.players) assertEq(p.score, 0);
+  });
+});
+
+/* =============================================================
+   RUN + RENDER
+   ============================================================= */
+function render() {
+  const container = document.getElementById('results');
+  container.innerHTML = '';
+  let total = 0, pass = 0, fail = 0;
+
+  for (const g of groups) {
+    const groupEl = document.createElement('div');
+    groupEl.className = 'group';
+    let groupPass = 0, groupFail = 0;
+
+    const header = document.createElement('div');
+    header.className = 'group-header';
+    header.innerHTML = `<span>${GC.escapeHtml(g.name)}</span><span class="count" id="gh-${groups.indexOf(g)}"></span>`;
+    groupEl.appendChild(header);
+
+    for (const t of g.tests) {
+      total++;
+      let passed = true, errMsg = null;
+      try { t.fn(); }
+      catch (e) { passed = false; errMsg = e.message || String(e); }
+
+      if (passed) { pass++; groupPass++; } else { fail++; groupFail++; }
+
+      const testEl = document.createElement('div');
+      testEl.className = 'test ' + (passed ? 'pass' : 'fail');
+      testEl.innerHTML = `
+        <div class="badge">${passed ? 'PASS' : 'FAIL'}</div>
+        <div class="body">
+          <div class="name">${GC.escapeHtml(t.name)}</div>
+          ${errMsg ? `<div class="err">${GC.escapeHtml(errMsg)}</div>` : ''}
+        </div>
+      `;
+      groupEl.appendChild(testEl);
+    }
+
+    header.querySelector('.count').textContent =
+      groupFail === 0 ? `${groupPass}/${g.tests.length} ✓` : `${groupPass}/${g.tests.length} (${groupFail} failed)`;
+    container.appendChild(groupEl);
+  }
+
+  document.getElementById('passCount').textContent = pass;
+  document.getElementById('failCount').textContent = fail;
+  document.getElementById('totalCount').textContent = total;
+  const pct = total ? (pass / total) * 100 : 0;
+  const bar = document.getElementById('fillBar');
+  bar.style.width = '100%';
+  bar.style.background = fail === 0 ? 'var(--lime)' : `linear-gradient(90deg, var(--pass) 0%, var(--pass) ${pct}%, var(--fail) ${pct}%, var(--fail) 100%)`;
+
+  // Update page title with summary
+  document.title = `${fail === 0 ? '✅' : '❌'} ${pass}/${total} — Doodle Dash Tests`;
+}
+
+render();
+</script>
+</body>
+</html>
