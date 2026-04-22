@@ -198,6 +198,25 @@
   .room-code-box .code { font-family: 'Bagel Fat One'; font-size: 40px; letter-spacing: 4px; cursor: pointer; }
   .room-code-box .hint { font-size: 11px; color: #444; }
 
+  .players-header {
+    font-family: 'Lilita One';
+    font-size: 15px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--paper);
+    background: var(--ink);
+    border: var(--border-w) solid var(--ink);
+    padding: 8px 20px;
+    box-shadow: 4px 4px 0 var(--pink);
+    display: inline-block;
+  }
+  .players-header #playerCount {
+    font-family: 'Bagel Fat One';
+    font-size: 22px;
+    color: var(--yellow);
+    margin: 0 4px;
+  }
+
   .players-list {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
@@ -636,13 +655,14 @@
     </div>
   </div>
 
+  <div class="players-header" id="playersHeader">Players — <span id="playerCount">0</span> / 12</div>
   <div class="players-list" id="playersList"></div>
 
   <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;">
     <button class="btn lime" id="startBtn" style="display:none;">🚀 Start Game</button>
     <button class="btn" id="leaveBtn">← Leave</button>
   </div>
-  <div id="lobbyNote" style="font-size: 13px; color: #666; text-align: center; max-width: 400px;"></div>
+  <div id="lobbyNote" style="font-size: 14px; color: #666; text-align: center; max-width: 500px; line-height: 1.5; padding: 0 20px;"></div>
 </div>
 
 <!-- ========== GAME ========== -->
@@ -1415,7 +1435,6 @@ function enterLobby() {
   // Only host sees settings and start button
   $('lobbySettings').style.display = isHost ? 'flex' : 'none';
   $('startBtn').style.display = isHost ? 'inline-block' : 'none';
-  $('lobbyNote').textContent = isHost ? 'You are the host — you control game settings and start the round.' : 'Waiting for the host to start the game…';
   $('roundsSelect').disabled = !isHost;
   $('timeSelect').disabled = !isHost;
   renderLobby();
@@ -1424,8 +1443,8 @@ function enterLobby() {
 function renderLobby() {
   const list = $('playersList');
   list.innerHTML = '';
-  for (const p of G.players) {
-    if (!p.connected) continue;
+  const connected = G.players.filter(p => p.connected);
+  for (const p of connected) {
     const chip = document.createElement('div');
     chip.className = 'player-chip';
     chip.innerHTML = `
@@ -1435,7 +1454,29 @@ function renderLobby() {
     `;
     list.appendChild(chip);
   }
-  $('startBtn').disabled = G.players.filter(p => p.connected).length < 2;
+
+  // Keep the player count header in sync with reality
+  const countEl = $('playerCount');
+  if (countEl) countEl.textContent = connected.length;
+
+  const canStart = connected.length >= 2;
+  $('startBtn').disabled = !canStart;
+
+  // Show host a dynamic hint explaining game state
+  const note = $('lobbyNote');
+  if (isHost) {
+    if (!canStart) {
+      const need = 2 - connected.length;
+      note.innerHTML = `<strong>Waiting for ${need} more player${need === 1 ? '' : 's'}</strong> — share the room code <strong>${roomCode}</strong> to invite someone. You need at least 2 people to play (one draws, the rest guess).`;
+      note.style.color = '#9a6b00';
+    } else {
+      note.textContent = `Ready to go — ${connected.length} player${connected.length === 1 ? '' : 's'} in the room. Click Start Game whenever you're ready.`;
+      note.style.color = '#2f7a2f';
+    }
+  } else {
+    note.textContent = 'Waiting for the host to start the game…';
+    note.style.color = '#666';
+  }
 }
 
 function renderGameFromState() {
